@@ -21,6 +21,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <iostream>
 
 #include "src/binary-reader.h"
 #include "src/error-formatter.h"
@@ -38,6 +40,8 @@
 
 using namespace wabt;
 using namespace wabt::interp;
+
+using chrono_clock = std::chrono::high_resolution_clock;
 
 static int s_verbose;
 static const char* s_infile;
@@ -229,13 +233,24 @@ static Result InstantiateModule(RefVec& imports,
 }
 
 static Result ReadAndRunModule(const char* module_filename) {
+  constexpr auto to_us = [](chrono_clock::duration d) {
+                           return std::chrono::duration_cast<std::chrono::microseconds>(d).count();
+                         };
+
   Errors errors;
   Module::Ptr module;
+
+  const auto parseStartTime = chrono_clock::now();
+  
   Result result = ReadModule(module_filename, &errors, &module);
   if (!Succeeded(result)) {
     FormatErrorsToFile(errors, Location::Type::Binary);
     return result;
   }
+
+  const auto now = chrono_clock::now();
+  const auto parseDuration = now - parseStartTime;
+  const auto execStartTime = now;
 
   RefVec imports;
 
@@ -308,6 +323,10 @@ static Result ReadAndRunModule(const char* module_filename) {
 
   if (s_run_all_exports) {
     RunAllExports(instance, &errors);
+    const auto execFinishTime = chrono_clock::now();
+    const auto execDuration = execFinishTime - execStartTime;
+    std::cout << "parse time: " << to_us(parseDuration) << "us\n";
+    std::cout << "exec time: " << to_us(execDuration) << "us\n";
   }
 #ifdef WITH_WASI
   if (s_wasi) {
